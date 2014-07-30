@@ -66,8 +66,7 @@ public class StateMachineTests {
         sm.configure(State.B)
                 .substateOf(State.C);
 
-        sm.configure(State.C)
-                .ignore(Trigger.X);
+        sm.configure(State.C);
 
         sm.fire(Trigger.X);
 
@@ -132,8 +131,8 @@ public class StateMachineTests {
         StateMachine<State, Trigger> sm = new StateMachine<>(State.B);
 
         sm.configure(State.B)
-                .permitIf(Trigger.X, State.A, IgnoredTriggerBehaviourTests.returnFalse)
-                .permitIf(Trigger.X, State.C, IgnoredTriggerBehaviourTests.returnTrue);
+                .permitIf(Trigger.X, State.A, GuardFalse.INSTANCE)
+                .permitIf(Trigger.X, State.C, GuardTrue.INSTANCE);
 
         sm.fire(Trigger.X);
 
@@ -157,8 +156,7 @@ public class StateMachineTests {
                     public void doIt() {
                         setFired();
                     }
-                })
-                .ignore(Trigger.X);
+                });
 
         sm.fire(Trigger.X);
 
@@ -192,14 +190,6 @@ public class StateMachineTests {
 
         sm.configure(State.B)
                 .permit(Trigger.X, State.B);
-    }
-
-    @Test(expected = IllegalStateException.class)
-    public void TriggerParametersAreImmutableOnceSet() {
-        StateMachine<State, Trigger> sm = new StateMachine<>(State.B);
-
-        sm.setTriggerParameters(Trigger.X, String.class, int.class);
-        sm.setTriggerParameters(Trigger.X, String.class);
     }
 
 //        @Test

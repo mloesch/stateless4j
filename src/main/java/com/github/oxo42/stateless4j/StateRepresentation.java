@@ -1,9 +1,6 @@
 package com.github.oxo42.stateless4j;
 
-import com.github.oxo42.stateless4j.delegates.Action1;
-import com.github.oxo42.stateless4j.delegates.Action2;
-import com.github.oxo42.stateless4j.transitions.Transition;
-import com.github.oxo42.stateless4j.triggers.TriggerBehaviour;
+import com.github.oxo42.stateless4j.delegates.Action;
 
 import java.util.*;
 
@@ -11,9 +8,9 @@ public class StateRepresentation<S, T> {
 
     private final S state;
 
-    private final Map<T, List<TriggerBehaviour<S, T>>> triggerBehaviours = new HashMap<>();
-    private final List<Action2<Transition<S, T>, Object[]>> entryActions = new ArrayList<>();
-    private final List<Action1<Transition<S, T>>> exitActions = new ArrayList<>();
+    private final Map<T, List<Transition<S, T>>> triggerBehaviours = new HashMap<>();
+    private final List<Action> entryActions = new ArrayList<>();
+    private final List<Action> exitActions = new ArrayList<>();
     private final List<StateRepresentation<S, T>> substates = new ArrayList<>();
     private StateRepresentation<S, T> superstate; // null
 
@@ -21,31 +18,31 @@ public class StateRepresentation<S, T> {
         this.state = state;
     }
 
-    protected Map<T, List<TriggerBehaviour<S, T>>> getTriggerBehaviours() {
+    protected Map<T, List<Transition<S, T>>> getTriggerBehaviours() {
         return triggerBehaviours;
     }
 
-    public Boolean canHandle(T trigger) {
-        return tryFindHandler(trigger) != null;
+    public boolean canHandle(T trigger) {
+        return getHandler(trigger) != null;
     }
 
-    public TriggerBehaviour<S, T> tryFindHandler(T trigger) {
-        TriggerBehaviour result = tryFindLocalHandler(trigger);
+    public Transition<S, T> getHandler(T trigger) {
+        Transition result = tryFindLocalHandler(trigger);
         if (result == null && superstate != null) {
-            result = superstate.tryFindHandler(trigger);
+            result = superstate.getHandler(trigger);
         }
         return result;
     }
 
-    TriggerBehaviour<S, T> tryFindLocalHandler(T trigger/*, out TriggerBehaviour handler*/) {
-        List<TriggerBehaviour<S, T>> possible = triggerBehaviours.get(trigger);
+    Transition<S, T> tryFindLocalHandler(T trigger/*, out TriggerBehaviour handler*/) {
+        List<Transition<S, T>> possible = triggerBehaviours.get(trigger);
         if (possible == null) {
             return null;
         }
 
-        List<TriggerBehaviour<S, T>> actual = new ArrayList<>();
-        for (TriggerBehaviour<S, T> triggerBehaviour : possible) {
-            if (triggerBehaviour.isGuardConditionMet()) {
+        List<Transition<S, T>> actual = new ArrayList<>();
+        for (Transition<S, T> triggerBehaviour : possible) {
+            if (triggerBehaviour.canEnable()) {
                 actual.add(triggerBehaviour);
             }
         }
@@ -57,78 +54,30 @@ public class StateRepresentation<S, T> {
         return actual.get(0);
     }
 
-    public void addEntryAction(final T trigger, final Action2<Transition<S, T>, Object[]> action) {
-        assert action != null : "action is null";
-
-        entryActions.add(new Action2<Transition<S, T>, Object[]>() {
-            @Override
-            public void doIt(Transition<S, T> t, Object[] args) {
-                if (t.getTrigger().equals(trigger)) {
-                    action.doIt(t, args);
-                }
-            }
-        });
-    }
-
-    public void addEntryAction(Action2<Transition<S, T>, Object[]> action) {
+    public void addEntryAction(Action action) {
         assert action != null : "action is null";
         entryActions.add(action);
     }
 
-    public void insertEntryAction(Action2<Transition<S, T>, Object[]> action) {
-        assert action != null : "action is null";
-        entryActions.add(0, action);
-    }
-
-    public void addExitAction(Action1<Transition<S, T>> action) {
+    public void addExitAction(Action action) {
         assert action != null : "action is null";
         exitActions.add(action);
     }
 
-    public void enter(Transition<S, T> transition, Object... entryArgs) {
-        assert transition != null : "transition is null";
-
-        if (transition.isReentry()) {
-            executeEntryActions(transition, entryArgs);
-        } else if (!includes(transition.getSource())) {
-            if (superstate != null) {
-                superstate.enter(transition, entryArgs);
-            }
-
-            executeEntryActions(transition, entryArgs);
+    void enter() {
+        for (Action action : entryActions) {
+            action.doIt();
         }
     }
 
-    public void exit(Transition<S, T> transition) {
-        assert transition != null : "transition is null";
-
-        if (transition.isReentry()) {
-            executeExitActions(transition);
-        } else if (!includes(transition.getDestination())) {
-            executeExitActions(transition);
-            if (superstate != null) {
-                superstate.exit(transition);
-            }
+    void exit() {
+        for (Action action : exitActions) {
+            action.doIt();
         }
     }
 
-    void executeEntryActions(Transition<S, T> transition, Object[] entryArgs) {
-        assert transition != null : "transition is null";
-        assert entryArgs != null : "entryArgs is null";
-        for (Action2<Transition<S, T>, Object[]> action : entryActions) {
-            action.doIt(transition, entryArgs);
-        }
-    }
-
-    void executeExitActions(Transition<S, T> transition) {
-        assert transition != null : "transition is null";
-        for (Action1<Transition<S, T>> action : exitActions) {
-            action.doIt(transition);
-        }
-    }
-
-    public void addTriggerBehaviour(TriggerBehaviour<S, T> triggerBehaviour) {
-        List<TriggerBehaviour<S, T>> allowed;
+    public void addTransition(Transition<S, T> triggerBehaviour) {
+        List<Transition<S, T>> allowed;
         if (!triggerBehaviours.containsKey(triggerBehaviour.getTrigger())) {
             allowed = new ArrayList<>();
             triggerBehaviours.put(triggerBehaviour.getTrigger(), allowed);
@@ -172,8 +121,8 @@ public class StateRepresentation<S, T> {
         Set<T> result = new HashSet<>();
 
         for (T t : triggerBehaviours.keySet()) {
-            for (TriggerBehaviour<S, T> v : triggerBehaviours.get(t)) {
-                if (v.isGuardConditionMet()) {
+            for (Transition<S, T> v : triggerBehaviours.get(t)) {
+                if (v.canEnable()) {
                     result.add(t);
                     break;
                 }

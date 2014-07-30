@@ -1,9 +1,6 @@
 package com.github.oxo42.stateless4j;
 
 import com.github.oxo42.stateless4j.delegates.*;
-import com.github.oxo42.stateless4j.transitions.Transition;
-import com.github.oxo42.stateless4j.transitions.TransitioningTriggerBehaviour;
-import com.github.oxo42.stateless4j.triggers.*;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -24,21 +21,8 @@ import java.util.Map.Entry;
 public class StateMachine<S, T> {
 
     protected final Map<S, StateRepresentation<S, T>> stateConfiguration = new HashMap<>();
-    protected final Map<T, TriggerWithParameters<S, T>> triggerConfiguration = new HashMap<>();
     protected final Func<S> stateAccessor;
     protected final Action1<S> stateMutator;
-    protected Action2<S, T> unhandledTriggerAction = new Action2<S, T>() {
-
-        @Override
-        public void doIt(S state, T trigger) {
-            throw new IllegalStateException(
-                    String.format(
-                            "No valid leaving transitions are permitted from state '%s' for trigger '%s'. Consider ignoring the trigger.",
-                            state, trigger)
-            );
-        }
-
-    };
 
     /**
      * Construct a state machine
@@ -124,97 +108,16 @@ public class StateMachine<S, T> {
      * @param trigger The trigger to fire
      * @The current state does not allow the trigger to be fired
      */
-    public void fire(T trigger) {
-        publicFire(trigger);
-    }
-
-    /**
-     * Transition from the current state via the specified trigger.
-     * The target state is determined by the configuration of the current state.
-     * Actions associated with leaving the current state and entering the new one
-     * will be invoked.
-     *
-     * @param trigger The trigger to fire
-     * @param arg0    The first argument
-     * @param <TArg0> Type of the first trigger argument
-     * @The current state does not allow the trigger to be fired
-     */
-    public <TArg0> void fire(TriggerWithParameters1<TArg0, S, T> trigger, TArg0 arg0) {
-        assert trigger != null : "trigger is null";
-        publicFire(trigger.getTrigger(), arg0);
-    }
-
-    /**
-     * Transition from the current state via the specified trigger.
-     * The target state is determined by the configuration of the current state.
-     * Actions associated with leaving the current state and entering the new one
-     * will be invoked.
-     *
-     * @param trigger The trigger to fire
-     * @param arg0    The first argument
-     * @param arg1    The second argument
-     * @param <TArg0> Type of the first trigger argument
-     * @param <TArg1> Type of the second trigger argument
-     * @The current state does not allow the trigger to be fired
-     */
-    public <TArg0, TArg1> void fire(TriggerWithParameters2<TArg0, TArg1, S, T> trigger, TArg0 arg0, TArg1 arg1) {
-        assert trigger != null : "trigger is null";
-        publicFire(trigger.getTrigger(), arg0, arg1);
-    }
-
-    /**
-     * Transition from the current state via the specified trigger.
-     * The target state is determined by the configuration of the current state.
-     * Actions associated with leaving the current state and entering the new one
-     * will be invoked.
-     *
-     * @param trigger The trigger to fire
-     * @param arg0    The first argument
-     * @param arg1    The second argument
-     * @param arg2    The third argument
-     * @param <TArg0> Type of the first trigger argument
-     * @param <TArg1> Type of the second trigger argument
-     * @param <TArg2> Type of the third trigger argument
-     * @The current state does not allow the trigger to be fired
-     */
-    public <TArg0, TArg1, TArg2> void fire(TriggerWithParameters3<TArg0, TArg1, TArg2, S, T> trigger, TArg0 arg0, TArg1 arg1, TArg2 arg2) {
-        assert trigger != null : "trigger is null";
-        publicFire(trigger.getTrigger(), arg0, arg1, arg2);
-    }
-
-    protected void publicFire(T trigger, Object... args) {
-        TriggerWithParameters<S, T> configuration = triggerConfiguration.get(trigger);
-        if (configuration != null) {
-            configuration.validateParameters(args);
+    public boolean fire(T trigger) {
+        Transition<S, T> transition = getCurrentRepresentation().getHandler(trigger);
+        if (transition == null) {
+            return false;
         }
 
-        TriggerBehaviour<S, T> triggerBehaviour = getCurrentRepresentation().tryFindHandler(trigger);
-        if (triggerBehaviour == null) {
-            unhandledTriggerAction.doIt(getCurrentRepresentation().getUnderlyingState(), trigger);
-            return;
-        }
-
-        S source = getState();
-        OutVar<S> destination = new OutVar<>();
-        if (triggerBehaviour.resultsInTransitionFrom(source, args, destination)) {
-            Transition<S, T> transition = new Transition<>(source, destination.get(), trigger);
-
-            getCurrentRepresentation().exit(transition);
-            setState(destination.get());
-            getCurrentRepresentation().enter(transition, args);
-        }
-    }
-
-    /**
-     * Override the default behaviour of throwing an exception when an unhandled trigger is fired
-     *
-     * @param unhandledTriggerAction An action to call when an unhandled trigger is fired
-     */
-    public void onUnhandledTrigger(Action2<S, T> unhandledTriggerAction) {
-        if (unhandledTriggerAction == null) {
-            throw new IllegalStateException("unhandledTriggerAction");
-        }
-        this.unhandledTriggerAction = unhandledTriggerAction;
+        getCurrentRepresentation().exit();
+        setState(transition.getDestination());
+        getCurrentRepresentation().enter();
+        return true;
     }
 
     /**
@@ -265,76 +168,15 @@ public class StateMachine<S, T> {
                 params.toString());
     }
 
-    /**
-     * Specify the arguments that must be supplied when a specific trigger is fired
-     *
-     * @param trigger The underlying trigger value
-     * @param classe0 Class argument
-     * @param <TArg0> Type of the first trigger argument
-     * @return An object that can be passed to the fire() method in order to fire the parameterised trigger
-     */
-    public <TArg0> TriggerWithParameters1<TArg0, S, T> setTriggerParameters(T trigger, Class<TArg0> classe0) {
-        TriggerWithParameters1<TArg0, S, T> configuration = new TriggerWithParameters1<>(trigger, classe0);
-        saveTriggerConfiguration(configuration);
-        return configuration;
-    }
-
-    /**
-     * Specify the arguments that must be supplied when a specific trigger is fired
-     *
-     * @param trigger The underlying trigger value
-     * @param classe0 Class argument
-     * @param classe1 Class argument
-     * @param <TArg0> Type of the first trigger argument
-     * @param <TArg1> Type of the second trigger argument
-     * @return An object that can be passed to the fire() method in order to fire the parameterised trigger
-     */
-    public <TArg0, TArg1> TriggerWithParameters2<TArg0, TArg1, S, T> setTriggerParameters(T trigger, Class<TArg0> classe0, Class<TArg1> classe1) {
-        TriggerWithParameters2<TArg0, TArg1, S, T> configuration = new TriggerWithParameters2<>(trigger, classe0, classe1);
-        saveTriggerConfiguration(configuration);
-        return configuration;
-    }
-
-    /**
-     * Specify the arguments that must be supplied when a specific trigger is fired
-     *
-     * @param trigger The underlying trigger value
-     * @param classe0 Class argument
-     * @param classe1 Class argument
-     * @param classe2 Class argument
-     * @param <TArg0> Type of the first trigger argument
-     * @param <TArg1> Type of the second trigger argument
-     * @param <TArg2> Type of the third trigger argument
-     * @return An object that can be passed to the fire() method in order to fire the parameterised trigger
-     */
-    public <TArg0, TArg1, TArg2> TriggerWithParameters3<TArg0, TArg1, TArg2, S, T> setTriggerParameters(T trigger, Class<TArg0> classe0, Class<TArg1> classe1, Class<TArg2> classe2) {
-        TriggerWithParameters3<TArg0, TArg1, TArg2, S, T> configuration = new TriggerWithParameters3<>(trigger, classe0, classe1, classe2);
-        saveTriggerConfiguration(configuration);
-        return configuration;
-    }
-
-    private void saveTriggerConfiguration(TriggerWithParameters<S, T> trigger) {
-        if (triggerConfiguration.containsKey(trigger.getTrigger())) {
-            throw new IllegalStateException("Parameters for the trigger '" + trigger + "' have already been configured.");
-        }
-
-        triggerConfiguration.put(trigger.getTrigger(), trigger);
-    }
-
     public void generateDotFileInto(final OutputStream dotFile) throws IOException {
         try (OutputStreamWriter w = new OutputStreamWriter(dotFile, "UTF-8")) {
             PrintWriter writer = new PrintWriter(w);
             writer.write("digraph G {\n");
-            OutVar<S> destination = new OutVar<>();
             for (Entry<S, StateRepresentation<S, T>> entry : this.stateConfiguration.entrySet()) {
-                Map<T, List<TriggerBehaviour<S, T>>> behaviours = entry.getValue().getTriggerBehaviours();
-                for (Entry<T, List<TriggerBehaviour<S, T>>> behaviour : behaviours.entrySet()) {
-                    for (TriggerBehaviour<S, T> triggerBehaviour : behaviour.getValue()) {
-                        if (triggerBehaviour instanceof TransitioningTriggerBehaviour) {
-                            destination.set(null);
-                            triggerBehaviour.resultsInTransitionFrom(null, null, destination);
-                            writer.write(String.format("\t%s -> %s;\n", entry.getKey(), destination));
-                        }
+                Map<T, List<Transition<S, T>>> behaviours = entry.getValue().getTriggerBehaviours();
+                for (Entry<T, List<Transition<S, T>>> behaviour : behaviours.entrySet()) {
+                    for (Transition<S, T> transition : behaviour.getValue()) {
+                        writer.write(String.format("\t%s -> %s;\n", entry.getKey(), transition.getDestination()));
                     }
                 }
             }

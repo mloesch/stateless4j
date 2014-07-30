@@ -15,20 +15,22 @@
  */
 package com.github.oxo42.stateless4j;
 
-public final class OutVar<T> {
+import com.github.oxo42.stateless4j.delegates.FuncBoolean;
 
-    private T obj;
+/**
+ *
+ * @author Fabien Renaud
+ */
+public final class GuardFalse implements FuncBoolean {
 
-    public T get() {
-        return obj;
-    }
+    public static final GuardFalse INSTANCE = new GuardFalse();
 
-    public void set(T v) {
-        this.obj = v;
+    private GuardFalse() {
     }
 
     @Override
-    public String toString() {
-        return String.valueOf(obj);
+    public boolean call() {
+        return false;
     }
+
 }
