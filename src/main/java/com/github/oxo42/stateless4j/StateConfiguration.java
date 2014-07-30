@@ -28,6 +28,10 @@ public class StateConfiguration<S, T> {
         return externalTransition(representation.getUnderlyingState(), trigger);
     }
 
+    public StateConfiguration<S, T> permitReentryIf(T trigger, FuncBoolean guard) {
+        return externalTransition(representation.getUnderlyingState(), trigger, guard);
+    }
+
     public StateConfiguration<S, T> externalTransition(S destinationState) {
         return externalTransition(destinationState, null);
     }
@@ -71,7 +75,7 @@ public class StateConfiguration<S, T> {
 
     /**
      * Sets the superstate that the configured state is a substate of
-     * <p/>
+     * <p>
      * Substates inherit the allowed transitions of their superstate.
      * When entering directly into a substate from outside of the superstate,
      * entry actions for the superstate are executed.

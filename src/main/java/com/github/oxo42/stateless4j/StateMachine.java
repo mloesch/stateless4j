@@ -1,7 +1,9 @@
 package com.github.oxo42.stateless4j;
 
-import com.github.oxo42.stateless4j.delegates.*;
 
+import com.github.oxo42.stateless4j.delegates.Action1;
+import com.github.oxo42.stateless4j.delegates.Func;
+import com.github.oxo42.stateless4j.delegates.Func2;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -106,7 +108,6 @@ public class StateMachine<S, T> {
      * will be invoked
      *
      * @param trigger The trigger to fire
-     * @The current state does not allow the trigger to be fired
      */
     public boolean fire(T trigger) {
         Transition<S, T> transition = getCurrentRepresentation().getHandler(trigger);
@@ -181,8 +182,6 @@ public class StateMachine<S, T> {
                 }
             }
             writer.write("}");
-        } catch (IOException ex) {
-            throw ex;
         }
     }
 }
